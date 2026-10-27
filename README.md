@@ -39,3 +39,14 @@ The tests cover matching priority, partial fills, cancellation, modification, in
 - Reducing the remaining quantity without changing the price keeps the order's place in the queue. Increasing quantity or changing price moves it to the back and may match it immediately.
 - Fills against the same trader at the same price are combined into one trade.
 - A mutex protects the order books while requests are being processed. The snapshot thread copies the current state before writing it to disk.
+
+## Appendix
+
+1. Each symbol has an `OrderBook` with two `std::map`s (price → `std::list<Order>`): bids sorted descending, asks ascending, so `begin()` is the best price; each list is FIFO.
+   A global `std::map<(trader, order_id), OrderLocation>` stores symbol, side, price and the list iterator, so cancel/modify find and erase an order without scanning the book.
+2. New order: O(log P + log N) if it does not cross; O(F·log N + L·log P) worst case,
+   where F = fills, L = price levels consumed, P = price levels, N = resting orders.
+   Cancel: O(log N + log P). Modify (quantity decrease): O(log N), in place.
+   Modify (price change / quantity increase): cancel + new order.
+3. One `std::mutex` guards the books and the index. The matching thread locks it per request;
+   the telemetry thread locks it only to copy the top 3 levels, then writes `snapshots.log` without the lock.
